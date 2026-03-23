@@ -36,12 +36,12 @@ def controller(state, target_pos, dt, wind_enabled=False):
     yaw = state[5]
     current_state_4 = np.array([pos[0], pos[1], pos[2], yaw])
 
-    # Step 1 — nominal controller (e.g. LQR) in yaw-body frame
+    # 1 - nominal controller (e.g. LQR) in yaw-body frame
     # Replace this placeholder with your actual LQR call:
     #   lqr_cmd = lqr_compute(state, target_pos)
     lqr_cmd = np.array([0.0, 0.0, 0.0, 0.0])
 
-    # Step 2 — DOBC wind compensation (only when wind is enabled)
+    # 2 - DOBC wind compensation (only when wind is enabled)
     if not wind_enabled:
         # No wind: reset observer and just use nominal command
         controller.d_hat_global  = np.zeros(4)
@@ -96,7 +96,7 @@ def controller(state, target_pos, dt, wind_enabled=False):
             controller.prev_state    = current_state_4.copy()
             controller.prev_cmd_body = final_cmd.copy()
 
-    # Step 3 — return final command
+    # 3 - return final command
     output = (
         float(final_cmd[0]),
         float(final_cmd[1]),

@@ -1,106 +1,176 @@
-# wind_flag = True
-
 import numpy as np
 
+# LQR gains
+INT_LIM_XY  = 1.5
+INT_LIM_Z   = 1.0
 
+# Derivative filter (0–1). Higher = faster but noisier.
+DERIV_ALPHA = 0.3
+
+Q_xy = 1.0
+R_xy = 2.8
+Q_z  = 1.5
+R_z  = 2.3
+
+# From scalar LQR: K = sqrt(Q/R)
+Kp_xy = np.sqrt(Q_xy / R_xy)
+Kp_z  = np.sqrt(Q_z  / R_z)
+
+# Small I for steady‑state error, D for damping
+Ki_xy = 0.05
+Ki_z  = 0.08
+
+Kd_xy = 0.08
+Kd_z  = 0.12
+
+Kyaw  = 0.8
+
+
+# LQR state
+prev_ex  = 0.0
+prev_ey  = 0.0
+prev_ez  = 0.0
+int_ex   = 0.0
+int_ey   = 0.0
+int_ez   = 0.0
+filt_dex = 0.0
+filt_dey = 0.0
+filt_dez = 0.0
+
+
+# DOBC state
+# Disturbance estimate [dx, dy, dz, d_yaw] in world frame
+dobc_d_hat_global  = np.zeros(4)
+dobc_prev_state    = None          # [x, y, z, yaw] at previous step
+dobc_prev_cmd_body = np.zeros(4)   # previous body‑frame command
+
+# DOBC gains [x, y, z, yaw]. Small on purpose - gentle observer, for now
+DOBC_L = np.array([0.01, 0.01, 0.008, 0.0])    # yaw DOB off for now
+
+
+# Helpers functiions
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+def wrap_angle(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
+def rotation_world_to_yaw_frame(yaw):
+    # 2D rotation using yaw only
+    c, s = np.cos(yaw), np.sin(yaw)
+    return np.array([[ c, s],
+                     [-s, c]])
+
+
+# Main controller
 def controller(state, target_pos, dt, wind_enabled=False):
     """
-    UAV position controller with a disturbance observer (DOBC) to compensate wind.
+    Outer‑loop position controller + simple disturbance observer.
 
-    Args:
-        state       : [pos_x, pos_y, pos_z, roll, pitch, yaw]
-        target_pos  : (x, y, z, yaw)
-        dt          : controller timestep (s)
-        wind_enabled: True when wind is active in the simulator
-
-    Returns:
-        (vx, vy, vz, yaw_rate) in the yaw-body frame
+    state:      [x, y, z, roll, pitch, yaw]
+    target_pos: (x, y, z, yaw)
+    dt:         controller timestep (s)
     """
 
-    # Initialise persistent variables on first call
-    if not hasattr(controller, 'initialised'):
-        # Estimated disturbance in global frame [dx, dy, dz, d_yaw]
-        controller.d_hat_global  = np.zeros(4)
-        # Previous [x, y, z, yaw] for prediction
-        controller.prev_state    = None
-        # Previous command in yaw-body frame
-        controller.prev_cmd_body = np.zeros(4)
-        controller.initialised   = True
+    global prev_ex, prev_ey, prev_ez
+    global int_ex, int_ey, int_ez
+    global filt_dex, filt_dey, filt_dez
+    global dobc_d_hat_global, dobc_prev_state, dobc_prev_cmd_body
 
-    # DOBC gains for [x, y, z, yaw]
-    # Bigger L → faster tracking, but more noise sensitive
-    L = np.array([0.4, 0.4, 0.3, 0.2])
+    #unack state/target
+    x, y, z = state[0], state[1], state[2]
+    yaw     = state[5]
 
-    # Current state in global frame
-    pos = np.array(state[0:3])
-    yaw = state[5]
-    current_state_4 = np.array([pos[0], pos[1], pos[2], yaw])
+    x_ref, y_ref, z_ref, yaw_ref = target_pos
 
-    # 1 - nominal controller (e.g. LQR) in yaw-body frame
-    # Replace this placeholder with your actual LQR call:
-    #   lqr_cmd = lqr_compute(state, target_pos)
-    lqr_cmd = np.array([0.0, 0.0, 0.0, 0.0])
+    
+    # LQR velocity
+    # Position error in world frame
+    ex_world = x_ref - x
+    ey_world = y_ref - y
+    ez = z_ref - z
+    eyaw = wrap_angle(yaw_ref - yaw)
 
-    # 2 - DOBC wind compensation (only when wind is enabled)
+    # Rotate xy error into yaw‑aligned body frame
+    ex, ey = rotation_world_to_yaw_frame(yaw) @ np.array([ex_world, ey_world])
+
+    # Filtered derivatives
+    filt_dex = (1 - DERIV_ALPHA) * filt_dex + DERIV_ALPHA * ((ex - prev_ex) / dt)
+    filt_dey = (1 - DERIV_ALPHA) * filt_dey + DERIV_ALPHA * ((ey - prev_ey) / dt)
+    filt_dez = (1 - DERIV_ALPHA) * filt_dez + DERIV_ALPHA * ((ez - prev_ez) / dt)
+
+    # Integrals with clamping
+    int_ex = clamp(int_ex + ex * dt, -INT_LIM_XY, INT_LIM_XY)
+    int_ey = clamp(int_ey + ey * dt, -INT_LIM_XY, INT_LIM_XY)
+    int_ez = clamp(int_ez + ez * dt, -INT_LIM_Z,  INT_LIM_Z)
+
+    # PID‑style velocity in body frame
+    vx_cmd       = Kp_xy * ex + Ki_xy * int_ex + Kd_xy * filt_dex
+    vy_cmd       = Kp_xy * ey + Ki_xy * int_ey + Kd_xy * filt_dey
+    vz_cmd       = Kp_z  * ez + Ki_z  * int_ez + Kd_z  * filt_dez
+    yaw_rate_cmd = Kyaw * eyaw
+
+    lqr_cmd = np.array([vx_cmd, vy_cmd, vz_cmd, yaw_rate_cmd])
+
+    prev_ex, prev_ey, prev_ez = ex, ey, ez
+
+  
+    # Disturbance observer
     if not wind_enabled:
-        # No wind: reset observer and just use nominal command
-        controller.d_hat_global  = np.zeros(4)
-        controller.prev_state    = None
-        controller.prev_cmd_body = np.zeros(4)
+        # No wind - keep DOB idle and reset its memory
+        dobc_d_hat_global  = np.zeros(4)
+        dobc_prev_state    = None
+        dobc_prev_cmd_body = np.zeros(4)
         final_cmd = lqr_cmd
 
     else:
-        # First tick with wind: just store state and command
-        if controller.prev_state is None:
-            controller.prev_state    = current_state_4.copy()
-            controller.prev_cmd_body = lqr_cmd.copy()
-            final_cmd = lqr_cmd
+        current_state_4 = np.array([x, y, z, yaw])
+
+        if dobc_prev_state is None:
+            # First step with wind on: just initialise
+            dobc_prev_state    = current_state_4.copy()
+            dobc_prev_cmd_body = lqr_cmd.copy()
+            final_cmd          = lqr_cmd
 
         else:
-            # Rotate previous body-frame command into global frame
-            prev_yaw = controller.prev_state[3]
+            # 1) previous body cmd - world frame
+            prev_yaw = dobc_prev_state[3]
             c, s = np.cos(prev_yaw), np.sin(prev_yaw)
-            prev_cmd_global = controller.prev_cmd_body.copy()
-            prev_cmd_global[0] = c * controller.prev_cmd_body[0] - s * controller.prev_cmd_body[1]
-            prev_cmd_global[1] = s * controller.prev_cmd_body[0] + c * controller.prev_cmd_body[1]
-            # z and yaw_rate unaffected by yaw rotation
+            prev_cmd_global = dobc_prev_cmd_body.copy()
+            prev_cmd_global[0] = c * dobc_prev_cmd_body[0] - s * dobc_prev_cmd_body[1]
+            prev_cmd_global[1] = s * dobc_prev_cmd_body[0] + c * dobc_prev_cmd_body[1]
 
-            # Predict current state with simple kinematics:
-            # x_pred = x_prev + (u_prev_global + d_hat_prev) * dt
-            predicted_state = (controller.prev_state
-                               + (prev_cmd_global + controller.d_hat_global) * dt)
+            # 2) predict where we should be now
+            predicted_state = dobc_prev_state + (prev_cmd_global + dobc_d_hat_global) * dt
 
-            # Innovation: measured minus predicted
+            # 3) innovation = actual − predicted
             innovation = current_state_4 - predicted_state
+            innovation[3] = wrap_angle(innovation[3])
 
-            # Wrap yaw error to [-pi, pi]
-            innovation[3] = (innovation[3] + np.pi) % (2 * np.pi) - np.pi
+            # 4) update disturbance estimate (world frame)
+            dobc_d_hat_global = dobc_d_hat_global + DOBC_L * innovation
 
-            # Disturbance observer update: d_hat_k = d_hat_{k-1} + L * innovation
-            controller.d_hat_global = controller.d_hat_global + L * innovation
+            # 5) limit disturbance magnitude
+            dobc_d_hat_global[:3] = np.clip(dobc_d_hat_global[:3], -0.2, 0.2)
+            dobc_d_hat_global[3]  = np.clip(dobc_d_hat_global[3], -0.1, 0.1)
 
-            # Limit disturbance estimate to reasonable values
-            controller.d_hat_global[:3] = np.clip(controller.d_hat_global[:3], -2.0, 2.0)
-            controller.d_hat_global[3]  = np.clip(controller.d_hat_global[3],  -1.0, 1.0)
-
-            # Rotate disturbance estimate back to yaw-body frame
+            # 6) rotate estimate back to body frame
             c, s = np.cos(yaw), np.sin(yaw)
-            d_hat_body = controller.d_hat_global.copy()
-            d_hat_body[0] =  c * controller.d_hat_global[0] + s * controller.d_hat_global[1]
-            d_hat_body[1] = -s * controller.d_hat_global[0] + c * controller.d_hat_global[1]
+            d_hat_body    = dobc_d_hat_global.copy()
+            d_hat_body[0] =  c * dobc_d_hat_global[0] + s * dobc_d_hat_global[1]
+            d_hat_body[1] = -s * dobc_d_hat_global[0] + c * dobc_d_hat_global[1]
 
-            # Compensate nominal command with estimated disturbance
+            # 7) subtract estimated disturbance from nominal command
             final_cmd = lqr_cmd - d_hat_body
 
-            # Store for next step
-            controller.prev_state    = current_state_4.copy()
-            controller.prev_cmd_body = final_cmd.copy()
+            # store for next step
+            dobc_prev_state    = current_state_4.copy()
+            dobc_prev_cmd_body = final_cmd.copy()
 
-    # 3 - return final command
-    output = (
-        float(final_cmd[0]),
-        float(final_cmd[1]),
-        float(final_cmd[2]),
-        float(final_cmd[3]),
+    # Clamp and return
+    return (
+        clamp(float(final_cmd[0]), -1.0,     1.0),
+        clamp(float(final_cmd[1]), -1.0,     1.0),
+        clamp(float(final_cmd[2]), -1.0,     1.0),
+        clamp(float(final_cmd[3]), -1.74533, 1.74533),
     )
-    return output

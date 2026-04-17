@@ -18,11 +18,13 @@ Q_xy = 1.0
 R_xy = 2.8
 Q_z = 1.5
 R_z = 2.3
-# LQR Gains:
+# LQR Gains (analytic solution Kp = sqrt(Q/R) for a first-order system):
 Kp_xy = np.sqrt(Q_xy/R_xy)
 Kp_z = np.sqrt(Q_z/R_z)
 Kyaw = 0.8
 
+Ki_xy = 0.08
+Ki_z = 0.10
 Kd_xy = 0.15
 Kd_z = 0.2
 
@@ -59,7 +61,7 @@ def controller(state, target_pos, dt, wind_enabled=False):
     global int_ex, int_ey, int_ez
     global filt_dex, filt_dey, filt_dez
 
-    # Extract valyues from state array:
+    # Extract values from state array:
     x = state[0]
     y = state[1]
     z = state[2]
@@ -101,23 +103,24 @@ def controller(state, target_pos, dt, wind_enabled=False):
     dey = filt_dey
     dez = filt_dez
 
-    # Update error intervals:
-    int_ex += ex*dt
-    int_ey += ey*dt
-    int_ez += ez*dt
-    int_ex = clamp(int_ex, -INT_LIM_XY, INT_LIM_XY)
-    int_ey = clamp(int_ey, -INT_LIM_XY, INT_LIM_XY)
-    int_ez = clamp(int_ez, -INT_LIM_Z, INT_LIM_Z)
+    # Update error integrals with anti-windup clamping:
+    int_ex = clamp(int_ex + ex*dt, -INT_LIM_XY, INT_LIM_XY)
+    int_ey = clamp(int_ey + ey*dt, -INT_LIM_XY, INT_LIM_XY)
+    int_ez = clamp(int_ez + ez*dt, -INT_LIM_Z, INT_LIM_Z)
 
-    # Form state vectors for each axis
+    # Form augmented state vectors [error, error_dot, error_integral] for each axis:
     x_state = np.array([ex, dex, int_ex])
     y_state = np.array([ey, dey, int_ey])
-    z_state = np.array([ex, dez, int_ez])
+    z_state = np.array([ez, dez, int_ez])
+
+    # LQR gain vectors K = [Kp, Kd, Ki], control law is u = K @ state:
+    K_xy = np.array([Kp_xy, Kd_xy, Ki_xy])
+    K_z  = np.array([Kp_z,  Kd_z,  Ki_z])
 
     # State-feedback control
-    vx_cmd = Kp_xy*ex + Kd_xy*dex
-    vy_cmd = Kp_xy*ey + Kd_xy*dey
-    vz_cmd = Kp_z*ez + Kd_z*dez
+    vx_cmd = K_xy @ x_state
+    vy_cmd = K_xy @ y_state
+    vz_cmd = K_z  @ z_state
     yaw_rate_cmd = Kyaw*eyaw
 
     # Clamp outputs to allowed range where yaw rate is in radians per second (100 deg/s = 1.74533 rad/s)

@@ -18,23 +18,23 @@ SCALE_TO_CMS = False    # set True if lab interface expects cm/s, not m/s
 SCALE_FACTOR = 100.0 if SCALE_TO_CMS else 1.0
 
 #Need to update these value
-Kp_xy = 0.6
-Kp_z  = 0.8
+Kp_xy = 1.8551
+Kp_z  = 2.5
 Ki_xy = 0.02
-Ki_z  = 0.04
-Kd_xy = 0.0     # disabled for first flights — re-enable once stable
-Kd_z  = 0.0
-Kyaw  = 0.8
-DERIV_ALPHA = 0.2
+Ki_z  = 0.001
+Kd_xy = 1.0     # disabled for first flights — re-enable once stable
+Kd_z  = 0.0675
+Kyaw  = 0.4779
+DERIV_ALPHA = 0.8
 
 # DOBC — always on for real drone (no wind_enabled flag)
 DOBC_ENABLED = True
-DOBC_L_xy    = 0.001    # keep very conservative on real hardware
-DOBC_L_z     = 0.001
-DOBC_L_yaw   = 0.0      # disabled until xy is proven stable
+DOBC_L_xy    = 0.0062    # keep very conservative on real hardware
+DOBC_L_z     = 0.0047
+DOBC_L_yaw   = 0.0000      # disabled until xy is proven stable
 
-INT_LIM_XY = 0.5
-INT_LIM_Z  = 0.5
+INT_LIM_XY = 0.1
+INT_LIM_Z  = 0.1
 
 # MAX_CMD: read from lab environment if set, otherwise default to 1.0 m/s.
 # The lab wrapper may inject MAX_SPEED as a global — this reads it safely.

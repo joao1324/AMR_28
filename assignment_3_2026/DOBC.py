@@ -24,23 +24,54 @@ Q_xy       = 1.0
 R_xy       = 2.8
 Q_z        = 1.5
 R_z        = 2.3
-Kp_xy      = np.sqrt(Q_xy / R_xy)   # ≈ 0.598
-Kp_z       = np.sqrt(Q_z  / R_z)    # ≈ 0.807
-Ki_xy      = 0.05
-Ki_z       = 0.08
-Kd_xy      = 0.08
-Kd_z       = 0.12
-Kyaw       = 0.8
-DERIV_ALPHA = 0.3
+# Kp_xy = np.sqrt(Q_xy/R_xy)
+# # Kp_z = np.sqrt(Q_z/R_z)
 
-# DOBC gains (tuned after basic LQR is stable)
-DOBC_L_xy  = 0.005
-DOBC_L_z   = 0.004
-DOBC_L_yaw = 0.0
+# No wind
+# 
+# Kp_z = 1.6777
+# Kyaw = 0.2
+# Kd_xy = 0.5373
+# Kd_z = 0.4115
+
+# # Integral limits (anti‑windup)
+# INT_LIM_XY = 0.4107
+# INT_LIM_Z  = 0.2984
+
+# DERIV_ALPHA = 0.8
+
+# Ki_xy = 0.02
+# Ki_z = 0.0028
+
+# # DOBC gains (tuned after basic LQR is stable)
+# DOBC_L_xy  = 0.0011
+# DOBC_L_z   = 0.0015
+# DOBC_L_yaw = 0.0
+
+#wind - pretty good but can improve ~ 0.35 score
+Kp_xy = 1.8551
+Kp_z = 2.5
+Kyaw = 0.4779
+Kd_xy = 1
+Kd_z = 0.0675
 
 # Integral limits (anti‑windup)
-INT_LIM_XY = 1.5
-INT_LIM_Z  = 1.0
+INT_LIM_XY = 0.1
+INT_LIM_Z  = 0.1
+
+DERIV_ALPHA = 0.8
+
+Ki_xy = 0.02
+Ki_z = 0.001
+
+# DOBC gains (tuned after basic LQR is stable)
+DOBC_L_xy  = 0.0062
+DOBC_L_z   = 0.0047
+DOBC_L_yaw = 0.0000
+
+
+
+
 
 # =============================================================================
 # LQR state (position PID in body frame)

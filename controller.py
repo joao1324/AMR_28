@@ -55,6 +55,23 @@ DOBC_L_xy = 0.0146
 DOBC_L_z = 0.0108
 DOBC_L_yaw = 0.0057
 
+#Gain from last lab
+# Kp_xy = 1.8551
+# Kp_z  = 2.5
+# Ki_xy = 0.02
+# Ki_z  = 0.001
+# Kd_xy = 1.0     # disabled for first flights — re-enable once stable
+# Kd_z  = 0.0675
+# Kyaw  = 0.4779
+# DERIV_ALPHA = 0.8
+## DOBC — always on for real drone (no wind_enabled flag)
+# DOBC_ENABLED = True
+# DOBC_L_xy    = 0.0062    # keep very conservative on real hardware
+# DOBC_L_z     = 0.0047
+# DOBC_L_yaw   = 0.0000      # disabled until xy is proven stable
+# INT_LIM_XY = 0.1
+# INT_LIM_Z  = 0.1
+
 # =============================================================================
 # LQR state (position PID in body frame)
 # =============================================================================

@@ -25,7 +25,7 @@ R_xy       = 2.8
 Q_z        = 1.5
 R_z        = 2.3
 
-# More conservative gains -> Kp_xy=0.8 and kp_z=1.2
+# More conservative gains -> Kp_xy=0.8 and kp_z=1.2 - "New"
 # Kp_xy = 0.8000
 # Kp_z = 1.2000
 # Kyaw = 1.0000
